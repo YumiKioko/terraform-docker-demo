@@ -58,4 +58,14 @@ jobs:
 
     - name: Show backend container logs
       run: docker logs my-backend
+      
+    - name: Run tfsec on Terraform code
+      uses: aquasecurity/tfsec-action@v1.0.0
+    
+    - name: Hadolint Dockerfile Linter
+      uses: hadolint/hadolint-action@v3.1.0
+
+    
+
+    
 
