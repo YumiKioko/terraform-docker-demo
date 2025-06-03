@@ -10,8 +10,7 @@ terraform {
 provider "docker" {}
 
 resource "docker_image" "nginx" {
-  name = "nginx:latest"
-  keep_locally = false
+  name = "${var.dockerhub_username}/terraform-nginx:latest"
 }
 
 resource "docker_container" "nginx" {
