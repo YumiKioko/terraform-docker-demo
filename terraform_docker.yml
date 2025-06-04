@@ -1,0 +1,102 @@
+- name: Dockerize Terraform project locally
+  hosts: terraform_host
+  become: true
+  vars:
+    tf_app_dir: /opt/terraform
+    terraform_image: terraform-local
+
+  tasks:
+    - name: Install Docker Compose
+      get_url:
+        url: https://github.com/docker/compose/releases/download/v2.20.2/docker-compose-linux-x86_64
+        dest: /usr/local/bin/docker-compose
+        mode: '0755'
+
+    - name: Create /opt/terraform directory
+      file:
+        path: "{{ tf_app_dir }}"
+        state: directory
+
+    - name: Copy all files to /opt/terraform (your local folder)
+      copy:
+        src: "./"
+        dest: "{{ tf_app_dir }}"
+        mode: preserve
+        owner: root
+        group: root
+
+    - name: Build Terraform Docker image from current folder
+      docker_image:
+        name: "{{ terraform_image }}"
+        source: build
+        build:
+          path: "{{ tf_app_dir }}"
+
+    - name: Run terraform init inside Docker container
+      docker_container:
+        name: terraform-init
+        image: "{{ terraform_image }}"
+        command: terraform init
+        volumes:
+          - "{{ tf_app_dir }}:/terraform"
+        working_dir: /terraform
+        state: started
+        auto_remove: true
+        tty: yes
+
+    - name: Run terraform plan inside Docker container
+      docker_container:
+        name: terraform-plan
+        image: "{{ terraform_image }}"
+        command: terraform plan
+        volumes:
+          - "{{ tf_app_dir }}:/terraform"
+        working_dir: /terraform
+        auto_remove: true
+        tty: yes
+
+    - name: Run terraform apply inside Docker container
+      docker_container:
+        name: terraform-apply
+        image: "{{ terraform_image }}"
+        command: terraform apply -auto-approve
+        volumes:
+          - "{{ tf_app_dir }}:/terraform"
+        working_dir: /terraform
+        auto_remove: true
+        tty: yes
+
+    - name: Run terraform output inside Docker container
+      shell: docker run --rm -v {{ tf_app_dir }}:/terraform -w /terraform {{ terraform_image }} terraform output -json
+      register: terraform_outputs
+      changed_when: false
+
+    - name: Parse terraform outputs JSON
+      set_fact:
+        terraform_outputs_parsed: "{{ terraform_outputs.stdout | from_json }}"
+
+    - name: Debug parsed terraform outputs
+      debug:
+        var: terraform_outputs_parsed
+
+    - name: Wait for backend health endpoint to respond
+      uri:
+        url: http://localhost:5000/
+        method: GET
+        status_code: 200
+      register: healthcheck_result
+      retries: 5
+      delay: 5
+      until: healthcheck_result.status == 200
+
+    - name: Run terraform destroy inside Docker container (optional)
+      docker_container:
+        name: terraform-destroy
+        image: "{{ terraform_image }}"
+        command: terraform destroy -auto-approve
+        volumes:
+          - "{{ tf_app_dir }}:/terraform"
+        working_dir: /terraform
+        auto_remove: true
+        tty: yes
+      when: cleanup | default(false)
