@@ -4,68 +4,109 @@ on:
   push:
     branches:
       - main
+    paths:
+      - '**.tf'
+      - '**.tfvars'
+      - '.github/workflows/terraform-docker.yml'
+      - 'backend/**'
+      - 'Dockerfile'
+
+  pull_request:
+    paths:
+      - '**.tf'
+      - '**.tfvars'
+      - '.github/workflows/terraform-docker.yml'
+      - 'backend/**'
+      - 'Dockerfile'
 
 jobs:
-  terraform:
+  terraform-check:
+    name: Terraform Plan and Lint
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repo
-      uses: actions/checkout@v3
+      - name: Checkout repo
+        uses: actions/checkout@v3
 
-    - name: Set up Terraform
-      uses: hashicorp/setup-terraform@v2
-      with:
-        terraform_version: 1.5.7
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.7
 
-    - name: Terraform Init
-      run: terraform init
+      - name: Terraform Init
+        run: terraform init
 
-    - name: Terraform Plan
-      run: terraform plan
+      - name: Terraform Plan
+        run: terraform plan
 
-    - name: Terraform Apply
-      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-      run: terraform apply -auto-approve
+      - name: Run tfsec on Terraform code
+        uses: aquasecurity/tfsec-action@v1.0.0
 
-    - name: Log in to Docker Hub
-      uses: docker/login-action@v2
-      with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_PASSWORD }}
+      - name: Hadolint Dockerfile Linter
+        uses: hadolint/hadolint-action@v3.1.0
 
-    - name: Build and push Docker image
-      run: |
-        docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/terraform-nginx:latest .
-        docker push ${{ secrets.DOCKERHUB_USERNAME }}/terraform-nginx:latest
+  terraform-apply:
+    name: Terraform Apply (Manual Approval)
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: terraform-check
+    runs-on: ubuntu-latest
 
-    - name: Build and push backend Docker image
-      run: |
-        docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/terraform-backend:latest ./backend
-        docker push ${{ secrets.DOCKERHUB_USERNAME }}/terraform-backend:latest    
+    environment:
+      name: production
+      url: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-    - name: Install Trivy scanner
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y wget apt-transport-https gnupg lsb-release
-        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-        echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
-        sudo apt-get update
-        sudo apt-get install -y trivy
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
 
-    - name: Scan Docker image for vulnerabilities
-      run: trivy image --exit-code 1 --severity HIGH,CRITICAL ${{ secrets.DOCKERHUB_USERNAME }}/terraform-nginx:latest
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.7
 
-    - name: Show backend container logs
-      run: docker logs my-backend
-      
-    - name: Run tfsec on Terraform code
-      uses: aquasecurity/tfsec-action@v1.0.0
-    
-    - name: Hadolint Dockerfile Linter
-      uses: hadolint/hadolint-action@v3.1.0
+      - name: Terraform Init
+        run: terraform init
 
-    
+      - name: Terraform Apply (Manual Approval Required)
+        run: terraform apply -auto-approve
 
-    
+  docker:
+    name: Docker Build and Push
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: terraform-apply
+    runs-on: ubuntu-latest
 
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      - name: Build and push Docker image
+        run: |
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/terraform-nginx:latest .
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/terraform-nginx:latest
+
+      - name: Build and push backend Docker image
+        run: |
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/terraform-backend:latest ./backend
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/terraform-backend:latest    
+
+      - name: Install Trivy scanner
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+          echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install -y trivy
+
+      - name: Scan Docker image for vulnerabilities
+        run: trivy image --exit-code 1 --severity HIGH,CRITICAL ${{ secrets.DOCKERHUB_USERNAME }}/terraform-nginx:latest
+
+      - name: Show backend container logs
+        run: docker logs my-backend
