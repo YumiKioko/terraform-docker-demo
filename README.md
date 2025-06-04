@@ -1,4 +1,6 @@
-# terraform-docker-demo
+![Terraform Docker CI](https://github.com/YumiKioko/terraform-docker-demo/actions/workflows/terraform-docker.yml/badge.svg)
+
+terraform-docker-demo
 
 This repository demonstrates how to use **Terraform** to provision infrastructure and **Docker** to containerize and deploy applications.
 
