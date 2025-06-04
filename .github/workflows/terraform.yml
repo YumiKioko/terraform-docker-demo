@@ -12,16 +12,17 @@ on:
       - 'Dockerfile'
 
   pull_request:
+    branches:
+      - main
     paths:
       - '**.tf'
       - '**.tfvars'
-      - '.github/workflows/terraform-docker.yml'
       - 'backend/**'
       - 'Dockerfile'
 
 jobs:
   terraform-check:
-    name: Terraform Plan and Lint
+    name: Terraform Plan and Lint (PR or Main)
     runs-on: ubuntu-latest
 
     steps:
@@ -46,7 +47,7 @@ jobs:
         uses: hadolint/hadolint-action@v3.1.0
 
   terraform-apply:
-    name: Terraform Apply (Manual Approval)
+    name: Terraform Apply to Production
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs: terraform-check
     runs-on: ubuntu-latest
@@ -67,11 +68,11 @@ jobs:
       - name: Terraform Init
         run: terraform init
 
-      - name: Terraform Apply (Manual Approval Required)
+      - name: Terraform Apply (Manual Approval)
         run: terraform apply -auto-approve
 
   docker:
-    name: Docker Build and Push
+    name: Docker Build, Scan, and Push
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs: terraform-apply
     runs-on: ubuntu-latest
