@@ -52,8 +52,8 @@ To work with this demo, you will need:
 
 📜 License
 
-This project is provided for demo purposes. Add a license here if you plan to distribute or expand it.
+This project is provided for demo purposes.
 
-## 👤 Author
+👤 Author
 
 Maintained by AF(https://github.com/YumiKioko)
