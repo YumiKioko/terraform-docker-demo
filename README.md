@@ -39,7 +39,7 @@ Installation & Usage
 
     Clone the repository:
 
-git clone https://github.com/yourusername/terraform-docker-demo.git
+git clone https://github.com/baltazaryumi/terraform-docker-demo.git
 cd terraform-docker-demo
 
     Initialize Terraform:
